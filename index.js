@@ -1,3 +1,4 @@
+require('dotenv').config(); // Load environment variables
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -9,18 +10,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-mongoose.connect('mongodb+srv://abhishekacharya9457:fHGk0AGMip4HnF2S@awscluster1.yxgawxa.mongodb.net/');
+// Connect to MongoDB using env variable
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch(err => console.error("❌ MongoDB connection error:", err));
 
+// User model
 const User = mongoose.model('User', new mongoose.Schema({
   email: String,
   password: String
 }));
 
+// Note model
 const Note = mongoose.model('Note', new mongoose.Schema({
   userId: String,
   text: String
 }));
 
+// Login or Register route
 app.post('/api/login', async (req, res) => {
   let user = await User.findOne({ email: req.body.email });
   if (!user) {
@@ -30,16 +37,17 @@ app.post('/api/login', async (req, res) => {
   const valid = await bcrypt.compare(req.body.password, user.password);
   if (!valid) return res.status(401).send("Invalid password");
 
-  const token = jwt.sign({ id: user._id }, "SECRET");
+  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
   res.json({ token });
 });
 
+// Auth middleware
 function auth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(403).send("Unauthorized");
 
   try {
-    const decoded = jwt.verify(token, "SECRET");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
@@ -47,6 +55,7 @@ function auth(req, res, next) {
   }
 }
 
+// Notes APIs
 app.get('/api/notes', auth, async (req, res) => {
   const notes = await Note.find({ userId: req.user.id });
   res.json(notes);
@@ -62,4 +71,11 @@ app.delete('/api/notes/:id', auth, async (req, res) => {
   res.sendStatus(204);
 });
 
-app.listen(5000, () => console.log('Auth server running on port 5000'));
+// Health check route
+app.get('/', (req, res) => {
+  res.send('✅ Backend is running successfully on EC2!');
+});
+
+// Start the server on env-defined port or default 5000
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`🚀 Auth server running on port ${PORT}`));
